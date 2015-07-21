@@ -69,14 +69,15 @@ impl <'a> Server<'a> {
     fn new(imageDir: &'a str, imageExt: &'a str, runAddress: &'a str, serverUrl: &'a str) -> Server<'a> {
         let usedUrls = match fs::read_dir(imageDir) {
             Ok(paths) => {
-                let urls = HashSet::<ImageUrl>::new();
+                let mut urls = HashSet::<ImageUrl>::new();
                 for path in paths {
                     match path.unwrap().file_name().into_string() {
                         Ok(s) => {
-                            // TODO
-                            let num = ImageUrl::from_str(s.split(".").nth(0).unwrap());
-                            //urls.push(num);
-                        }
+                            match ImageUrl::from_str(s.split(".").nth(0).unwrap()) {
+                                Ok(num) => { urls.insert(num); }
+                                Err(_) => { continue; }
+                            }
+                        },
                         Err(_) => { continue; }
                     }
                 }
@@ -219,8 +220,8 @@ fn on_req(server: &mut Server, req: Request, res: Response) {
     // determine what request they are making:
     // if it is a GET method, then retrieve the image
     // if it is a POST method:
-    //    - then ensure it is an image (HOW?) 
-    //    - save it locally with a random 8 character long 62 bit number (a-zA-Z0-9)
+    //    - then ensure it is an image
+    //    - save it locally with a random 6 character long 62 bit number (a-zA-Z0-9)
     //    - give them the URL
 
     match req.method {
