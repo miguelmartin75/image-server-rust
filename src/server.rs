@@ -7,16 +7,13 @@ use std::borrow::Borrow;
 
 use std::sync::Mutex;
 
-use hyper::server::{Request, Response};
 use hyper::{Get, Post};
+use hyper::server::{Request, Response};
 use hyper::uri::RequestUri::AbsolutePath;
-use hyper::net::Fresh;
 use hyper::header::ContentType;
-use hyper::server::Handler;
 
 use hyper::status::StatusCode::{UnsupportedMediaType, InternalServerError, NotFound, BadRequest};
 
-use rand::Rand;
 use rand::Rng;
 use rand::StdRng;
 
@@ -37,14 +34,14 @@ pub struct Server<'a> {
     content_type: ContentType,
     server_url: &'a str,
     run_address: &'a str,
-    usedUrls : UsedUrlSet,
+    used_urls : UsedUrlSet,
     mutex : Mutex<UsedUrlSet>,
     rng : StdRng,
 }
 
 impl <'a> Server<'a> {
     pub fn new(image_dir: &'a str, content_type: ContentType, run_address: &'a str, server_url: &'a str) -> Server<'a> {
-        let usedUrls = match fs::read_dir(image_dir) {
+        let used_urls = match fs::read_dir(image_dir) {
             Ok(paths) => {
                 let mut urls = UsedUrlSet::new();
                 for path in paths {
@@ -68,8 +65,8 @@ impl <'a> Server<'a> {
                  content_type: content_type,
                  server_url: server_url,
                  run_address: run_address,
-                 usedUrls: usedUrls, rng: panic!(StdRng::new()),
-                 mutex: Mutex::new(usedUrls) }
+                 used_urls: used_urls, rng: panic!(StdRng::new()),
+                 mutex: Mutex::new(used_urls) }
     }
 
     pub fn run(&self) {
@@ -102,18 +99,20 @@ impl <'a> Server<'a> {
 
     fn upload_image(&mut self, data: &[u8]) -> Option<String> {
         let mut num = self.gen_image_url();
-        while self.usedUrls.contains(&num) {
+        while self.used_urls.contains(&num) {
             num = self.gen_image_url();
         }
 
-        let fileName = self.get_image_path(num.to_string().borrow());
+        let file_name = self.get_image_path(num.to_string().borrow());
 
-        return match File::create(&fileName) {
+        return match File::create(&file_name) {
             Ok(mut file) => {
-                file.write_all(data);
-                Some(self.server_url.to_string() + fileName.borrow())
+                match file.write_all(data) {
+                    Ok(_) => Some(self.server_url.to_string() + file_name.borrow()),
+                    Err(_) => None
+                }
             }
-            Err(e) => None
+            Err(_) => None
         }
     }
 

@@ -11,6 +11,6 @@ const SERVER_URL: &'static str = SERVER_ADDRESS; // TODO: change to domain
 const IMAGE_DIR: &'static str = "screenies";
 
 fn main() {
-    let mut server = Server::new(IMAGE_DIR, ContentType::png(), SERVER_URL, SERVER_ADDRESS);
+    let server = Server::new(IMAGE_DIR, ContentType::png(), SERVER_URL, SERVER_ADDRESS);
     server.run();
 }
