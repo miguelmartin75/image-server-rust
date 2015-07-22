@@ -5,8 +5,8 @@ use std::io;
 use std::io::Write;
 use std::fs;
 use std::fs::File;
-use std::str::FromStr;
 use std::borrow::Borrow;
+use std::str::FromStr;
 
 use std::sync::Mutex;
 
@@ -19,11 +19,9 @@ use hyper::net::Fresh;
 
 use hyper::status::StatusCode::{UnsupportedMediaType, InternalServerError, NotFound, BadRequest};
 
-use rand::Rng;
-use rand::StdRng;
-
-use image_url::*;
 use util::read_whole;
+
+pub use image_url::*;
 
 macro_rules! try_print(
     ($e:expr) => {{
@@ -36,31 +34,15 @@ macro_rules! try_print(
 
 pub struct Server<'a> {
     pub image_dir : &'a str,
-    //pub content_type: ContentType,
+    pub content_type: ContentType,
     pub server_url: &'a str,
     pub run_address: &'a str,
-    //used_urls : UsedUrlSet,
-    //mutex : Mutex<UsedUrlSet>,
-    //rng : StdRng,
+    pub used_urls: Mutex<UsedUrlSet>,
 }
-
-fn content_type() -> ContentType { ContentType::png() }
-
-pub struct MyHandler<'a> {
-    pub server: &'a mut Server<'a>,
-}
-
-impl <'a> Handler for MyHandler<'a> {
-    fn handle<'b, 'k>(&'b self, mut req: Request<'b, 'k>, mut res: Response<'b, Fresh>) {
-        self.server.on_req(req, res);
-    }
-}
-
-unsafe impl <'a> Sync for Server<'a> { }
-unsafe impl <'a> Send for Server<'a> { }
 
 impl <'a> Server<'a> {
-    pub fn new(image_dir: &'a str, /*content_type: ContentType,*/ run_address: &'a str, server_url: &'a str) -> Server<'a> {
+
+    pub fn new(image_dir: &'a str, content_type: ContentType, run_address: &'a str, server_url: &'a str) -> Server<'a> {
         let used_urls = match fs::read_dir(image_dir) {
             Ok(paths) => {
                 let mut urls = UsedUrlSet::new();
@@ -81,16 +63,16 @@ impl <'a> Server<'a> {
             Err(_) => UsedUrlSet::new()
         };
 
+        for i in used_urls.iter() {
+            println!("url exists: {}", i);
+        }
+
         Server { image_dir: image_dir, 
-                 //content_type: content_type,
+                 content_type: content_type,
                  server_url: server_url, 
                  run_address: run_address,
-               }
-            /*
-                 used_urls: used_urls, 
-                 mutex: Mutex::new(used_urls) 
-                 rng: panic!(StdRng::new()), }
-                 */
+                 used_urls: Mutex::new(used_urls),
+                 }
     }
 
     // retrieves an image path
@@ -116,7 +98,7 @@ impl <'a> Server<'a> {
     fn handle_get_image_req(&self, path: &str, mut res: Response) {
         match self.retrieve_image(path) {
             Ok(data) => {
-                res.headers_mut().set(/*self.content_type.clone()*/content_type());
+                res.headers_mut().set(self.content_type.clone());
                 try_print!(res.send(data.borrow()));
             },
             Err(e) => {
@@ -127,37 +109,33 @@ impl <'a> Server<'a> {
                 };
 
                 *res.status_mut() = status;
-                res.send(status.to_string().as_bytes());
+                try_print!(res.send(status.to_string().as_bytes()));
             }
         }
     }
 
-/*
-    fn gen_image_url(&mut self) -> ImageUrl {
-        ImageUrl(self.rng.gen::<ImageUrlImpl>())
-    }
-*/
+    fn upload_image(&self, data: &[u8]) -> Option<String> {
 
-/*
-    fn upload_image(&mut self, data: &[u8]) -> Option<String> {
-        let mut num = self.gen_image_url();
-        while self.used_urls.contains(&num) {
-            num = self.gen_image_url();
+        let mut used_urls = self.used_urls.lock().unwrap();
+
+        let mut num = gen_image_url();
+        while used_urls.contains(&num) {
+            num = gen_image_url();
         }
 
         let file_name = self.get_image_path(num.to_string().borrow());
+        used_urls.insert(ImageUrl(num.0));
 
         return match File::create(&file_name) {
             Ok(mut file) => {
                 match file.write_all(data) {
-                    Ok(_) => Some(self.server_url.to_string() + file_name.borrow()),
+                    Ok(_) => Some(self.server_url.to_string() + "/" + num.to_string().borrow()),
                     Err(_) => None
                 }
             }
             Err(_) => None
         }
     }
-    */
 
     fn on_req(&self, mut req: Request, mut res: Response) {
         // determine what request they are making:
@@ -175,7 +153,6 @@ impl <'a> Server<'a> {
                 }
             }
             Post => {
-                /*
                 println!("received post");
                 // check to see if the request has a content type
                 // and it is something that we can use. If so:
@@ -196,13 +173,15 @@ impl <'a> Server<'a> {
                 // give back the URL to the image
                 let data = try_print!(read_whole(&mut req));
                 let url = self.upload_image(data.borrow());
-                try_print!(res.send(url.as_bytes()));
-
-                */
+                try_print!(res.send(url.unwrap().as_bytes()));
             },
             _ => ()
         }
     }
 }
 
-
+impl <'a> Handler for Server<'a> {
+    fn handle<'b, 'k>(&'b self, req: Request<'b, 'k>, res: Response<'b, Fresh>) {
+        self.on_req(req, res);
+    }
+}

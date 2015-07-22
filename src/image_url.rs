@@ -1,8 +1,12 @@
+extern crate rand;
+
 use std::fmt;
 use std::str;
 use std::str::FromStr;
-
 use std::collections::HashSet;
+
+use rand::thread_rng;
+use rand::Rng;
 
 pub type ImageUrlImpl = u64;
 
@@ -13,6 +17,11 @@ pub struct ImageUrl(pub ImageUrlImpl);
 pub struct OutOfRange(u8);
 
 pub type UsedUrlSet = HashSet<ImageUrl>;
+
+pub fn gen_image_url() -> ImageUrl {
+    let mut rng = thread_rng();
+    ImageUrl(rng.gen::<ImageUrlImpl>())
+}
 
 const BASE: u64 = 62;
 const IMAGE_URL_CHARS: &'static str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
