@@ -76,8 +76,8 @@ impl <'a> Server<'a> {
     }
 
     // retrieves an image path
-    // image.png => <image_dir>/image
-    // image => <image_dir>/image
+    // name.png => <image_dir>/name
+    // name => <image_dir>/name
     fn get_image_path(&self, path: &str) -> String {
         // remove extension
         let base = path.split(".").nth(0).unwrap();
@@ -155,8 +155,7 @@ impl <'a> Server<'a> {
             Post => {
                 println!("received post");
                 // check to see if the request has a content type
-                // and it is something that we can use. If so:
-                // then we will upload it 
+                // and it is something that we can use. If so: then we will upload it 
                 if !req.headers.has::<ContentType>() {
                     println!("Error: Post request has no content type");
                     *res.status_mut() = BadRequest;
@@ -170,7 +169,7 @@ impl <'a> Server<'a> {
                     return;
                 }
                 
-                // give back the URL to the image
+                // give back the URL to the client
                 let data = try_print!(read_whole(&mut req));
                 let url = self.upload_image(data.borrow());
                 try_print!(res.send(url.unwrap().as_bytes()));
