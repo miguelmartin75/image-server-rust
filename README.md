@@ -2,14 +2,9 @@
 
 A simple image server written in rust.
 
-# Compile
+## Compilation
 
 Simply run `cargo build`.
-
-## TODO
-
-[] Authentication
-[] Image Caching
 
 # License 
 
