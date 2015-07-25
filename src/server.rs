@@ -28,7 +28,6 @@ macro_rules! try_print(
 pub struct Server<'a> {
     pub image_dir : &'a str,
     pub content_type: ContentType<'a>,
-    //pub server_url: &'a str,
     pub used_urls: Mutex<UsedUrlSet>,
 }
 
@@ -63,7 +62,6 @@ impl <'a> Server<'a> {
 
         Server { image_dir: image_dir, 
                  content_type: content_type,
-                 server_url: server_url, 
                  used_urls: Mutex::new(used_urls),
                  }
     }
@@ -157,7 +155,7 @@ impl <'a> Server<'a> {
         return match File::create(&file_name) {
             Ok(mut file) => {
                 match file.write_all(data) {
-                    Ok(_) => Some(num.to_string().borrow()),
+                    Ok(_) => Some(num.to_string()),
                     Err(_) => None
                 }
             }
