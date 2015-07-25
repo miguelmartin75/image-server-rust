@@ -1,5 +1,9 @@
-extern crate hyper;
+//extern crate hyper;
+extern crate tiny_http;
+extern crate ascii;
 extern crate rand;
+
+use ascii::AsciiCast;
 
 use std::io;
 use std::io::Write;
@@ -8,8 +12,13 @@ use std::fs::File;
 use std::borrow::Borrow;
 use std::str::FromStr;
 
+use std::ascii::AsciiExt;
+
 use std::sync::Mutex;
 
+use tiny_http::{ServerBuilder, Response, Request, Method, Header, StatusCode};
+
+/*
 use hyper::{Get, Post};
 use hyper::server::{Request, Response};
 use hyper::uri::RequestUri::AbsolutePath;
@@ -18,6 +27,7 @@ use hyper::server::Handler;
 use hyper::net::Fresh;
 
 use hyper::status::StatusCode::{UnsupportedMediaType, InternalServerError, NotFound, BadRequest};
+*/
 
 use util::read_whole;
 
@@ -34,15 +44,17 @@ macro_rules! try_print(
 
 pub struct Server<'a> {
     pub image_dir : &'a str,
-    pub content_type: ContentType,
+    pub content_type: ContentType<'a>,
     pub server_url: &'a str,
     pub run_address: &'a str,
     pub used_urls: Mutex<UsedUrlSet>,
 }
 
+pub type ContentType<'a> = &'a str;
+
 impl <'a> Server<'a> {
 
-    pub fn new(image_dir: &'a str, content_type: ContentType, run_address: &'a str, server_url: &'a str) -> Server<'a> {
+    pub fn new(image_dir: &'a str, content_type: ContentType<'a>, run_address: &'a str, server_url: &'a str) -> Server<'a> {
         let used_urls = match fs::read_dir(image_dir) {
             Ok(paths) => {
                 let mut urls = UsedUrlSet::new();
@@ -75,6 +87,41 @@ impl <'a> Server<'a> {
                  }
     }
 
+    pub fn run(&self, port: u16, threads: u32) {
+        let server = ServerBuilder::new().with_port(port).build().unwrap();
+
+        // TODO: multiple worker threads
+        loop {
+            match server.recv() {
+                Ok(req) => {
+                    self.on_req(req);
+                },
+                Err(e) => { println!("Error: {}", e); continue; }
+            }
+        }
+
+        /*
+        let guards = Vec::with_capacity(threads);
+
+        for i in 0..threads {
+            let server = tiny_http_server.clone();
+
+            let guard = thread::spawn(move || {
+                loop { 
+                    match server.recv() {
+                        Ok(req) => {
+                            self.on_req(req);
+                        },
+                        Err(e) => { println!("Error: {}", e); continue; }
+                    }
+                }
+            });
+
+            guards.push(guard);
+        }
+        */
+    }
+
     // retrieves an image path
     // name.png => <image_dir>/name
     // name => <image_dir>/name
@@ -84,32 +131,20 @@ impl <'a> Server<'a> {
         self.image_dir.to_string() + base
     }
 
-    fn retrieve_image(&self, path: &str) -> io::Result<Vec<u8>> {
-        let full_path = self.get_image_path(path);
+
+    fn handle_get_image_req(&self, req: Request) {
+        let full_path = self.get_image_path(req.url().borrow());
         match fs::metadata(&full_path) {
             Ok(_) => {
-                let mut file = File::open(&full_path).unwrap();
-                return read_whole(&mut file);
+                let file = File::open(&full_path).unwrap();
+                let res = Response::from_file(file)
+                          .with_header(Header::from_bytes(&b"Content-Type"[..], self.content_type.as_bytes()).unwrap())
+                          .with_status_code(StatusCode(200));
+                req.respond(res);
             }, 
-            Err(e) => Err(e)
-        }
-    }
-
-    fn handle_get_image_req(&self, path: &str, mut res: Response) {
-        match self.retrieve_image(path) {
-            Ok(data) => {
-                res.headers_mut().set(self.content_type.clone());
-                try_print!(res.send(data.borrow()));
-            },
             Err(e) => {
-                println!("Error: {}", e);
-                let status = match e.kind() {
-                    io::ErrorKind::NotFound | io::ErrorKind::Other => NotFound,
-                    _ => InternalServerError
-                };
-
-                *res.status_mut() = status;
-                try_print!(res.send(status.to_string().as_bytes()));
+                let res = Response::from_string("404").with_status_code(StatusCode(404));
+                req.respond(res);
             }
         }
     }
@@ -137,7 +172,7 @@ impl <'a> Server<'a> {
         }
     }
 
-    fn on_req(&self, mut req: Request, mut res: Response) {
+    fn on_req(&self, mut req: Request) {
         // determine what request they are making:
         // if it is a GET method, then retrieve the image
         // if it is a POST method:
@@ -145,42 +180,50 @@ impl <'a> Server<'a> {
         //    - save it locally with a random 6 character long 62 bit number (a-zA-Z0-9)
         //    - give them the URL
 
-        match req.method {
-            Get => {
-                match req.uri {
-                    AbsolutePath(path) => self.handle_get_image_req(&path[..], res),
-                    _ => ()
-                }
+        print!("{:?} ", req);
+        let method = req.method().to_string();
+        match method.borrow() {
+            "GET" => {
+                self.handle_get_image_req(req);
             }
-            Post => {
-                println!("received post");
-                // check to see if the request has a content type
-                // and it is something that we can use. If so: then we will upload it 
-                if !req.headers.has::<ContentType>() {
-                    println!("Error: Post request has no content type");
-                    *res.status_mut() = BadRequest;
-                    return;
+            "POST" => {
+
+                {
+                    let content_type = req.headers().iter().find(|&header| header.field.equiv("Content-Type"));
+                    match content_type {
+                        Some(x) => {
+                            if x.value != self.content_type {
+                                println!("Unsupported content type {}", x.value);
+                                return;
+                            }
+
+                            // correct format
+                            // fall-through
+                        },
+                        None => {
+                            // TODO
+                            return;
+                        }
+                    }
                 }
 
-                if *req.headers.get::<ContentType>().unwrap() != self.content_type {
-                    println!("UnsupportedMediaType: {}", *req.headers.get::<ContentType>().unwrap());
-                    println!("{}", req.headers);
-                    *res.status_mut() = UnsupportedMediaType;
-                    return;
-                }
-                
-                // give back the URL to the client
-                let data = try_print!(read_whole(&mut req));
-                let url = self.upload_image(data.borrow());
-                try_print!(res.send(url.unwrap().as_bytes()));
+                let data = try_print!(read_whole(req.as_reader()));
+                let url = self.upload_image(data.borrow()).unwrap();
+                print!("generated url: {}", url);
+                let res = Response::from_string(url).with_status_code(StatusCode(200)).with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=UTF-8"[..]).unwrap());
+                req.respond(res);
             },
             _ => ()
         }
+        println!("");
     }
 }
 
+/*
 impl <'a> Handler for Server<'a> {
     fn handle<'b, 'k>(&'b self, req: Request<'b, 'k>, res: Response<'b, Fresh>) {
+        println!("handling request:");
         self.on_req(req, res);
     }
 }
+*/

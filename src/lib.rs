@@ -1,4 +1,5 @@
-extern crate hyper;
+extern crate tiny_http;
+extern crate ascii;
 extern crate rand;
 
 pub mod server;
