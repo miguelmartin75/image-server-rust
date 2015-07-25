@@ -87,9 +87,13 @@ impl <'a> Server<'a> {
     fn retrieve_image(&self, path: &str) -> io::Result<Vec<u8>> {
         let full_path = self.get_image_path(path);
         match fs::metadata(&full_path) {
-            Ok(_) => {
-                let mut file = File::open(&full_path).unwrap();
-                return read_whole(&mut file);
+            Ok(metadata) => {
+                if metadata.is_file() {
+                    let mut file = File::open(&full_path).unwrap();
+                    return read_whole(&mut file);
+                } else {
+                    return Err(io::Error::new(io::ErrorKind::NotFound, "Directory"));
+                }
             }, 
             Err(e) => Err(e)
         }
