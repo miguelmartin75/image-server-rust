@@ -1,33 +1,16 @@
-//extern crate hyper;
 extern crate tiny_http;
 extern crate ascii;
 extern crate rand;
 
-use ascii::AsciiCast;
-
-use std::io;
 use std::io::Write;
 use std::fs;
 use std::fs::File;
 use std::borrow::Borrow;
 use std::str::FromStr;
 
-use std::ascii::AsciiExt;
-
 use std::sync::Mutex;
 
-use tiny_http::{ServerBuilder, Response, Request, Method, Header, StatusCode};
-
-/*
-use hyper::{Get, Post};
-use hyper::server::{Request, Response};
-use hyper::uri::RequestUri::AbsolutePath;
-use hyper::header::ContentType;
-use hyper::server::Handler;
-use hyper::net::Fresh;
-
-use hyper::status::StatusCode::{UnsupportedMediaType, InternalServerError, NotFound, BadRequest};
-*/
+use tiny_http::{ServerBuilder, Response, Request, Header, StatusCode};
 
 use util::read_whole;
 
@@ -46,7 +29,6 @@ pub struct Server<'a> {
     pub image_dir : &'a str,
     pub content_type: ContentType<'a>,
     pub server_url: &'a str,
-    pub run_address: &'a str,
     pub used_urls: Mutex<UsedUrlSet>,
 }
 
@@ -54,7 +36,7 @@ pub type ContentType<'a> = &'a str;
 
 impl <'a> Server<'a> {
 
-    pub fn new(image_dir: &'a str, content_type: ContentType<'a>, run_address: &'a str, server_url: &'a str) -> Server<'a> {
+    pub fn new(image_dir: &'a str, content_type: ContentType<'a>, server_url: &'a str) -> Server<'a> {
         let used_urls = match fs::read_dir(image_dir) {
             Ok(paths) => {
                 let mut urls = UsedUrlSet::new();
@@ -82,7 +64,6 @@ impl <'a> Server<'a> {
         Server { image_dir: image_dir, 
                  content_type: content_type,
                  server_url: server_url, 
-                 run_address: run_address,
                  used_urls: Mutex::new(used_urls),
                  }
     }
@@ -142,7 +123,7 @@ impl <'a> Server<'a> {
                           .with_status_code(StatusCode(200));
                 req.respond(res);
             }, 
-            Err(e) => {
+            Err(_) => {
                 let res = Response::from_string("404").with_status_code(StatusCode(404));
                 req.respond(res);
             }
@@ -218,12 +199,3 @@ impl <'a> Server<'a> {
         println!("");
     }
 }
-
-/*
-impl <'a> Handler for Server<'a> {
-    fn handle<'b, 'k>(&'b self, req: Request<'b, 'k>, res: Response<'b, Fresh>) {
-        println!("handling request:");
-        self.on_req(req, res);
-    }
-}
-*/
