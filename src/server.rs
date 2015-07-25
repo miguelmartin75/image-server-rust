@@ -28,7 +28,7 @@ macro_rules! try_print(
 pub struct Server<'a> {
     pub image_dir : &'a str,
     pub content_type: ContentType<'a>,
-    pub server_url: &'a str,
+    //pub server_url: &'a str,
     pub used_urls: Mutex<UsedUrlSet>,
 }
 
@@ -36,7 +36,7 @@ pub type ContentType<'a> = &'a str;
 
 impl <'a> Server<'a> {
 
-    pub fn new(image_dir: &'a str, content_type: ContentType<'a>, server_url: &'a str) -> Server<'a> {
+    pub fn new(image_dir: &'a str, content_type: ContentType<'a>) -> Server<'a> {
         let used_urls = match fs::read_dir(image_dir) {
             Ok(paths) => {
                 let mut urls = UsedUrlSet::new();
@@ -157,7 +157,7 @@ impl <'a> Server<'a> {
         return match File::create(&file_name) {
             Ok(mut file) => {
                 match file.write_all(data) {
-                    Ok(_) => Some(self.server_url.to_string() + "/" + num.to_string().borrow()),
+                    Ok(_) => Some(num.to_string().borrow()),
                     Err(_) => None
                 }
             }
