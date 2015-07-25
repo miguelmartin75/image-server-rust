@@ -112,16 +112,28 @@ impl <'a> Server<'a> {
         self.image_dir.to_string() + base
     }
 
-
     fn handle_get_image_req(&self, req: Request) {
         let full_path = self.get_image_path(req.url().borrow());
         match fs::metadata(&full_path) {
-            Ok(_) => {
-                let file = File::open(&full_path).unwrap();
-                let res = Response::from_file(file)
-                          .with_header(Header::from_bytes(&b"Content-Type"[..], self.content_type.as_bytes()).unwrap())
-                          .with_status_code(StatusCode(200));
-                req.respond(res);
+            Ok(metadata) => {
+                if !metadata.is_file() {
+                    let res = Response::from_string("404").with_status_code(StatusCode(404));
+                    req.respond(res);
+                    return;
+                }
+
+                match File::open(&full_path) {
+                    Ok(file) => {
+                        let res = Response::from_file(file)
+                                  .with_header(Header::from_bytes(&b"Content-Type"[..], self.content_type.as_bytes()).unwrap())
+                                  .with_status_code(StatusCode(200));
+                        req.respond(res);
+                    },
+                    Err(_) => {
+                        let res = Response::from_string("500").with_status_code(StatusCode(500));
+                        req.respond(res);
+                    }
+                }
             }, 
             Err(_) => {
                 let res = Response::from_string("404").with_status_code(StatusCode(404));
