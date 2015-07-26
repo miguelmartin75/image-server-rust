@@ -190,7 +190,7 @@ pub fn run(server: Server, info: ServerInfo) {
 
     let mut threads = Vec::with_capacity(info.threads);
 
-    for i in 0..info.threads {
+    for _ in 0..info.threads {
         let w = wrapped_server.clone();
         let s = tiny_server.clone();
 
@@ -205,7 +205,10 @@ pub fn run(server: Server, info: ServerInfo) {
     }
 
     for thread in threads {
-        thread.join();
+        match thread.join() {
+            Ok(_) => (),
+            Err(e) => { println!("Error: {:?}", e); }
+        }
     }
 }
 
