@@ -2,6 +2,7 @@ extern crate tiny_http;
 extern crate ascii;
 extern crate rand;
 
+use std::string::String;
 use std::io::Write;
 use std::fs;
 use std::fs::File;
@@ -9,6 +10,8 @@ use std::borrow::Borrow;
 use std::str::FromStr;
 
 use std::sync::Mutex;
+use std::sync::Arc;
+use std::thread;
 
 use tiny_http::{ServerBuilder, Response, Request, Header, StatusCode};
 
@@ -25,18 +28,18 @@ macro_rules! try_print(
     }}
 );
 
-pub struct Server<'a> {
-    pub image_dir : &'a str,
-    pub content_type: ContentType<'a>,
+pub type ContentType = String;
+
+pub struct Server {
+    pub image_dir : String,
+    pub content_type: ContentType,
     pub used_urls: Mutex<UsedUrlSet>,
 }
 
-pub type ContentType<'a> = &'a str;
+impl Server {
 
-impl <'a> Server<'a> {
-
-    pub fn new(image_dir: &'a str, content_type: ContentType<'a>) -> Server<'a> {
-        let used_urls = match fs::read_dir(image_dir) {
+    pub fn new(image_dir: String, content_type: ContentType) -> Server {
+        let used_urls = match fs::read_dir(Borrow::<str>::borrow(&image_dir)) {
             Ok(paths) => {
                 let mut urls = UsedUrlSet::new();
                 for path in paths {
@@ -64,41 +67,6 @@ impl <'a> Server<'a> {
                  content_type: content_type,
                  used_urls: Mutex::new(used_urls),
                  }
-    }
-
-    pub fn run(&self, port: u16, threads: u32) {
-        let server = ServerBuilder::new().with_port(port).build().unwrap();
-
-        // TODO: multiple worker threads
-        loop {
-            match server.recv() {
-                Ok(req) => {
-                    self.on_req(req);
-                },
-                Err(e) => { println!("Error: {}", e); continue; }
-            }
-        }
-
-        /*
-        let guards = Vec::with_capacity(threads);
-
-        for i in 0..threads {
-            let server = tiny_http_server.clone();
-
-            let guard = thread::spawn(move || {
-                loop { 
-                    match server.recv() {
-                        Ok(req) => {
-                            self.on_req(req);
-                        },
-                        Err(e) => { println!("Error: {}", e); continue; }
-                    }
-                }
-            });
-
-            guards.push(guard);
-        }
-        */
     }
 
     // retrieves an image path
@@ -209,3 +177,34 @@ impl <'a> Server<'a> {
         println!("");
     }
 }
+
+pub struct ServerInfo {
+    pub port: u16,
+    pub threads: usize
+}
+
+pub fn run(image_dir: String, content_type: ContentType, info: ServerInfo) {
+    let tiny_server = Arc::new(ServerBuilder::new().with_port(info.port).build().unwrap());
+    let wrapped_server = Arc::new(Server::new(image_dir, content_type));
+
+    let mut threads = Vec::with_capacity(info.threads);
+
+    for i in 0..info.threads {
+        let w = wrapped_server.clone();
+        let s = tiny_server.clone();
+
+        threads.push(thread::spawn(move || {
+            loop {
+                match s.recv() {
+                    Ok(req) => { w.on_req(req); },
+                    Err(e) => { println!("Error: {}", e); break; }
+                }
+            }
+        }));
+    }
+
+    for thread in threads {
+        thread.join();
+    }
+}
+
