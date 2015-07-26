@@ -88,11 +88,12 @@ impl Server {
                     return;
                 }
 
+
                 match File::open(&full_path) {
                     Ok(file) => {
                         let res = Response::from_file(file)
-                                  .with_header(Header::from_bytes(&b"Content-Type"[..], self.content_type.as_bytes()).unwrap())
-                                  .with_status_code(StatusCode(200));
+                            .with_header(Header::from_bytes(&b"Content-Type"[..], self.content_type.as_bytes()).unwrap())
+                            .with_status_code(StatusCode(200));
                         req.respond(res);
                     },
                     Err(_) => {
