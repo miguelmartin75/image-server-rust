@@ -183,9 +183,9 @@ pub struct ServerInfo {
     pub threads: usize
 }
 
-pub fn run(image_dir: String, content_type: ContentType, info: ServerInfo) {
+pub fn run(server: Server, info: ServerInfo) {
     let tiny_server = Arc::new(ServerBuilder::new().with_port(info.port).build().unwrap());
-    let wrapped_server = Arc::new(Server::new(image_dir, content_type));
+    let wrapped_server = Arc::new(server);
 
     let mut threads = Vec::with_capacity(info.threads);
 
