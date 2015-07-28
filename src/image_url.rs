@@ -1,16 +1,19 @@
 extern crate rand;
 
+use std::cmp;
 use std::fmt;
 use std::str;
 use std::str::FromStr;
 use std::collections::HashSet;
 
 use rand::thread_rng;
-use rand::Rng;
+
+use rand::distributions::Range;
+use rand::distributions::IndependentSample;
 
 pub type ImageUrlImpl = u64;
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, PartialOrd, Eq, Hash, Debug)]
 pub struct ImageUrl(pub ImageUrlImpl); 
 
 #[derive(Debug)]
@@ -18,18 +21,35 @@ pub struct OutOfRange(u8);
 
 pub type UsedUrlSet = HashSet<ImageUrl>;
 
-pub fn gen_image_url() -> ImageUrl {
+pub fn gen_image_url(range: Range<ImageUrlImpl>) -> ImageUrl {
     let mut rng = thread_rng();
-    ImageUrl(rng.gen::<ImageUrlImpl>())
+    ImageUrl(range.ind_sample(&mut rng))
 }
 
 const BASE: u64 = 62;
 const IMAGE_URL_CHARS: &'static str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
+fn compute_bits_required(mut num: ImageUrlImpl) -> usize {
+    let mut result = 0;
+    while num > 0 {
+        num /= BASE;
+        result += 1;
+    }
+
+    result
+}
+
+pub fn compute_max_url(max_url_length: u32) -> ImageUrlImpl {
+    BASE.pow(max_url_length)
+}
+
 impl fmt::Display for ImageUrl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut num = self.0;
-        let mut result = ['0' as u8; 6];
+        // require at least 3 digits
+        let number_of_digits = cmp::max(3, compute_bits_required(num));
+
+        let mut result = vec!['0' as u8; number_of_digits];
 
         for i in (0..result.len()).rev() {
             result[i] = IMAGE_URL_CHARS.as_bytes()[(num % BASE) as usize];

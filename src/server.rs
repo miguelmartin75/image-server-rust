@@ -13,6 +13,8 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::thread;
 
+use rand::distributions::Range;
+
 use tiny_http::{ServerBuilder, Response, Request, Header, StatusCode};
 
 use util::read_whole;
@@ -34,11 +36,11 @@ pub struct Server {
     pub image_dir : String,
     pub content_type: ContentType,
     pub used_urls: Mutex<UsedUrlSet>,
+    url_range: rand::distributions::Range<ImageUrlImpl>
 }
 
 impl Server {
-
-    pub fn new(image_dir: String, content_type: ContentType) -> Server {
+    pub fn new(image_dir: String, content_type: ContentType, max_url_length: u32) -> Server {
         let used_urls = match fs::read_dir(Borrow::<str>::borrow(&image_dir)) {
             Ok(paths) => {
                 let mut urls = UsedUrlSet::new();
@@ -63,9 +65,12 @@ impl Server {
             println!("url exists: {}", i);
         }
 
+        println!("Max url: {}" , compute_max_url(max_url_length));
+
         Server { image_dir: image_dir, 
                  content_type: content_type,
                  used_urls: Mutex::new(used_urls),
+                 url_range: Range::new(0, compute_max_url(max_url_length))
                  }
     }
 
@@ -88,7 +93,6 @@ impl Server {
                     return;
                 }
 
-
                 match File::open(&full_path) {
                     Ok(file) => {
                         let res = Response::from_file(file)
@@ -109,13 +113,16 @@ impl Server {
         }
     }
 
-    fn upload_image(&self, data: &[u8]) -> Option<String> {
+    fn gen_image_url(&self) -> ImageUrl {
+        gen_image_url(self.url_range)
+    }
 
+    fn upload_image(&self, data: &[u8]) -> Option<ImageUrl> {
         let mut used_urls = self.used_urls.lock().unwrap();
 
-        let mut num = gen_image_url();
+        let mut num = self.gen_image_url();
         while used_urls.contains(&num) {
-            num = gen_image_url();
+            num = self.gen_image_url();
         }
 
         let file_name = self.get_image_path(num.to_string().borrow());
@@ -124,7 +131,7 @@ impl Server {
         return match File::create(&file_name) {
             Ok(mut file) => {
                 match file.write_all(data) {
-                    Ok(_) => Some(num.to_string()),
+                    Ok(_) => Some(num),
                     Err(_) => None
                 }
             }
@@ -168,10 +175,17 @@ impl Server {
                 }
 
                 let data = try_print!(read_whole(req.as_reader()));
-                let url = self.upload_image(data.borrow()).unwrap();
-                print!("generated url: {}", url);
-                let res = Response::from_string(url).with_status_code(StatusCode(200)).with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=UTF-8"[..]).unwrap());
-                req.respond(res);
+                match self.upload_image(data.borrow()) {
+                    Some(url) => {
+                        print!("generated url: {} ({})", url, url.0);
+                        let res = Response::from_string(url.to_string()).with_status_code(StatusCode(200)).with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=UTF-8"[..]).unwrap());
+                        req.respond(res);
+                    },
+                    None => {
+                        let res = Response::from_string("500").with_status_code(StatusCode(404));
+                        req.respond(res);
+                    }
+                }
             },
             _ => ()
         }
